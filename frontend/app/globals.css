@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-geist-sans);
 }
@@ -7,6 +9,11 @@
 ::selection {
   background-color: rgb(224 242 254);
   color: rgb(15 23 42);
+}
+
+.dark ::selection {
+  background-color: rgb(56 189 248 / 0.35);
+  color: rgb(248 250 252);
 }
 
 @keyframes flame-flicker {

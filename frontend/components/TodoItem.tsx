@@ -57,18 +57,18 @@ export default function TodoItem({
   }
 
   return (
-    <li className="group flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3.5 shadow-sm transition-all hover:border-neutral-300 hover:shadow-md sm:px-5">
+    <li className="group flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3.5 shadow-sm transition-all hover:border-neutral-300 hover:shadow-md dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600 sm:px-5">
       <input
         type="checkbox"
         checked={todo.is_completed}
         onChange={() => onToggle(todo.id)}
-        className="h-5 w-5 shrink-0 cursor-pointer rounded border-neutral-300 text-sky-500 accent-sky-500"
+        className="h-5 w-5 shrink-0 cursor-pointer rounded border-neutral-300 text-sky-500 accent-sky-500 dark:border-neutral-600 dark:accent-sky-400"
       />
 
       {isEditing ? (
         <div className="min-w-0 flex-1">
           {dateLabel ? (
-            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700/90 sm:text-xs">
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700/90 dark:text-amber-400/90 sm:text-xs">
               {dateLabel}
             </p>
           ) : null}
@@ -79,13 +79,13 @@ export default function TodoItem({
             onChange={(e) => setEditText(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={handleKeyDown}
-            className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/25"
+            className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/25 dark:border-sky-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-sky-500 dark:focus:ring-sky-500/25"
           />
         </div>
       ) : (
         <div className="min-w-0 flex-1">
           {dateLabel ? (
-            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700/90 sm:text-xs">
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700/90 dark:text-amber-400/90 sm:text-xs">
               {dateLabel}
             </p>
           ) : null}
@@ -93,8 +93,8 @@ export default function TodoItem({
             onDoubleClick={startEditing}
             className={`block cursor-pointer text-sm leading-relaxed select-none sm:text-[15px] ${
               todo.is_completed
-                ? 'text-neutral-400 line-through'
-                : 'text-neutral-900'
+                ? 'text-neutral-400 line-through dark:text-neutral-500'
+                : 'text-neutral-900 dark:text-neutral-100'
             }`}
           >
             {todo.title}
@@ -106,7 +106,7 @@ export default function TodoItem({
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             onClick={startEditing}
-            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
+            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600 dark:hover:bg-sky-950/50 dark:hover:text-sky-400"
             aria-label="수정"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -115,7 +115,7 @@ export default function TodoItem({
           </button>
           <button
             onClick={() => onDelete(todo.id)}
-            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-500"
+            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
             aria-label="삭제"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

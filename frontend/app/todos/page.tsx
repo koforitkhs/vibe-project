@@ -377,7 +377,7 @@ export default function TodosPage() {
   if (!authReady) {
     return (
       <div className="flex flex-1 items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-100 border-t-sky-500" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-100 border-t-sky-500 dark:border-sky-900 dark:border-t-sky-400" />
       </div>
     );
   }
@@ -385,7 +385,7 @@ export default function TodosPage() {
   if (authError) {
     return (
       <div className="mx-auto max-w-3xl px-5 py-16 sm:px-8">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
           {authError}
         </div>
       </div>
@@ -395,7 +395,7 @@ export default function TodosPage() {
   return (
     <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
       <div
-        className={`relative mb-8 overflow-hidden rounded-3xl border border-neutral-200 bg-white px-4 py-5 shadow-sm sm:px-6 ${
+        className={`relative mb-8 overflow-hidden rounded-3xl border border-neutral-200 bg-white px-4 py-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:px-6 ${
           streakFlash ? 'flame-glow ring-2 ring-orange-400/60' : ''
         }`}
       >
@@ -409,7 +409,7 @@ export default function TodosPage() {
           <button
             type="button"
             onClick={goToPrev}
-            className="rounded-xl p-2.5 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
+            className="rounded-xl p-2.5 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600 dark:hover:bg-sky-950/50 dark:hover:text-sky-400"
             aria-label="하루 전"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -418,17 +418,17 @@ export default function TodosPage() {
           </button>
 
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50 sm:text-3xl">
               {isToday ? '오늘의 할일' : '할일 기록'}
             </h1>
-            <p className="mt-2 text-sm font-medium text-neutral-500 sm:text-base">
+            <p className="mt-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 sm:text-base">
               {formatDate(selectedDate)}
             </p>
             {!isToday && (
               <button
                 type="button"
                 onClick={goToToday}
-                className="mt-2 text-xs font-semibold text-sky-600 underline-offset-4 hover:text-sky-700 hover:underline sm:text-sm"
+                className="mt-2 text-xs font-semibold text-sky-600 underline-offset-4 hover:text-sky-700 hover:underline dark:text-sky-400 dark:hover:text-sky-300 sm:text-sm"
               >
                 오늘로 돌아가기
               </button>
@@ -438,7 +438,7 @@ export default function TodosPage() {
           <button
             type="button"
             onClick={goToNext}
-            className="rounded-xl p-2.5 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
+            className="rounded-xl p-2.5 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600 dark:hover:bg-sky-950/50 dark:hover:text-sky-400"
             aria-label="하루 후"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -466,22 +466,22 @@ export default function TodosPage() {
       </div>
 
       {(listError || actionError) && (
-        <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
           {listError ?? actionError}
         </div>
       )}
 
-      <div className="mb-8 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="mb-8 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:p-8">
         <div className="flex items-center justify-between text-sm sm:text-base">
-          <span className="font-semibold text-neutral-800">달성률</span>
-          <span className="text-lg font-bold tracking-tight text-neutral-950">
+          <span className="font-semibold text-neutral-800 dark:text-neutral-200">달성률</span>
+          <span className="text-lg font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
             {completionRate}%
-            <span className="ml-1.5 text-sm font-medium text-neutral-400">
+            <span className="ml-1.5 text-sm font-medium text-neutral-400 dark:text-neutral-500">
               ({completedCount}/{todos.length})
             </span>
           </span>
         </div>
-        <div className="mt-4 h-3 overflow-hidden rounded-full bg-neutral-100">
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
           <div
             className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-500 transition-all duration-500 ease-out"
             style={{ width: `${completionRate}%` }}
@@ -490,42 +490,42 @@ export default function TodosPage() {
       </div>
 
       <section
-        className="mb-8 overflow-hidden rounded-3xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-white shadow-sm"
+        className="mb-8 overflow-hidden rounded-3xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-white shadow-sm dark:border-amber-800/50 dark:from-amber-950/50 dark:to-neutral-900"
         aria-label="다른 날짜 미완료 할일"
       >
         <button
           type="button"
           onClick={() => setBacklogOpen((o) => !o)}
-          className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors hover:bg-amber-50/50 sm:px-6"
+          className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors hover:bg-amber-50/50 dark:hover:bg-amber-950/30 sm:px-6"
           aria-expanded={backlogOpen}
         >
           <div>
-            <h2 className="text-base font-bold text-neutral-900 sm:text-lg">
+            <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100 sm:text-lg">
               완료하지 못한 할일
             </h2>
-            <p className="mt-0.5 text-xs text-neutral-500 sm:text-sm">
+            <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400 sm:text-sm">
               다른 날짜에 남겨 둔 일만 모아서 보여요. 이 날짜의 미완료는 위 목록에서 볼 수 있어요.
             </p>
           </div>
-          <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-sm font-bold tabular-nums text-white shadow-sm">
+          <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-sm font-bold tabular-nums text-white shadow-sm dark:bg-amber-600">
             {backlogForPanel.length}
           </span>
         </button>
 
         {backlogOpen && (
-          <div className="border-t border-amber-200/60 px-5 pb-5 pt-3 sm:px-6">
+          <div className="border-t border-amber-200/60 px-5 pb-5 pt-3 dark:border-amber-800/40 sm:px-6">
             {incompleteBacklog.length > backlogForPanel.length && (
-              <p className="mb-3 text-xs text-neutral-500">
+              <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
                 이 날짜 미완료{' '}
                 {incompleteBacklog.length - backlogForPanel.length}건은 위 할일 목록에서 확인하세요.
               </p>
             )}
             {backlogLoading ? (
-              <p className="py-8 text-center text-sm font-medium text-neutral-500">
+              <p className="py-8 text-center text-sm font-medium text-neutral-500 dark:text-neutral-400">
                 불러오는 중…
               </p>
             ) : backlogForPanel.length === 0 ? (
-              <p className="py-8 text-center text-sm font-medium text-neutral-600">
+              <p className="py-8 text-center text-sm font-medium text-neutral-600 dark:text-neutral-400">
                 다른 날짜에 밀린 미완료 할일이 없습니다.
               </p>
             ) : (
@@ -553,7 +553,7 @@ export default function TodosPage() {
       </section>
 
       <div className="mb-4 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
           보기
         </span>
         {(
@@ -569,8 +569,8 @@ export default function TodosPage() {
             onClick={() => setTodoFilter(key)}
             className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
               todoFilter === key
-                ? 'bg-neutral-950 text-white shadow-sm'
-                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                ? 'bg-neutral-950 text-white shadow-sm dark:bg-neutral-100 dark:text-neutral-950'
+                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700'
             }`}
           >
             {label}
@@ -579,11 +579,13 @@ export default function TodosPage() {
       </div>
 
       {listLoading ? (
-        <p className="py-16 text-center text-sm font-medium text-neutral-500">불러오는 중…</p>
+        <p className="py-16 text-center text-sm font-medium text-neutral-500 dark:text-neutral-400">
+          불러오는 중…
+        </p>
       ) : todos.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-sky-100 bg-sky-50/30 py-20">
+        <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-sky-100 bg-sky-50/30 py-20 dark:border-sky-900/50 dark:bg-sky-950/20">
           <svg
-            className="h-14 w-14 text-sky-300"
+            className="h-14 w-14 text-sky-300 dark:text-sky-700"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -595,16 +597,16 @@ export default function TodosPage() {
               d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15a2.25 2.25 0 0 1 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z"
             />
           </svg>
-          <p className="mt-5 text-lg font-semibold tracking-tight text-neutral-900">
+          <p className="mt-5 text-lg font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
             할일이 없습니다
           </p>
-          <p className="mt-2 text-sm text-neutral-500">
+          <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
             새로운 할일을 추가해 보세요!
           </p>
         </div>
       ) : filteredTodos.length === 0 ? (
-        <div className="rounded-3xl border border-neutral-200 bg-neutral-50/80 py-16 text-center">
-          <p className="text-sm font-medium text-neutral-600">
+        <div className="rounded-3xl border border-neutral-200 bg-neutral-50/80 py-16 text-center dark:border-neutral-800 dark:bg-neutral-900/60">
+          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
             {todoFilter === 'completed'
               ? '완료된 할일이 없습니다.'
               : '미완료 할일이 없습니다.'}
@@ -632,19 +634,19 @@ export default function TodosPage() {
 
       <form
         onSubmit={handleAdd}
-        className="mt-8 flex gap-3 rounded-3xl border border-neutral-200 bg-white p-3 pl-5 shadow-sm sm:p-4 sm:pl-6"
+        className="mt-8 flex gap-3 rounded-3xl border border-neutral-200 bg-white p-3 pl-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:p-4 sm:pl-6"
       >
         <input
           type="text"
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="새로운 할일을 입력하세요"
-          className="min-w-0 flex-1 border-0 bg-transparent py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0 sm:text-base"
+          className="min-w-0 flex-1 border-0 bg-transparent py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0 dark:text-neutral-100 dark:placeholder:text-neutral-500 sm:text-base"
         />
         <button
           type="submit"
           disabled={!newTitle.trim()}
-          className="shrink-0 rounded-2xl bg-neutral-950 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-neutral-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-35"
+          className="shrink-0 rounded-2xl bg-neutral-950 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-neutral-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-neutral-100 dark:text-neutral-950 dark:hover:bg-neutral-200 dark:focus-visible:ring-sky-500 dark:focus-visible:ring-offset-neutral-950"
         >
           추가
         </button>
