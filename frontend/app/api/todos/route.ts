@@ -21,7 +21,10 @@ export async function GET(req: NextRequest) {
   const supabase = getService();
   if (!supabase) {
     return NextResponse.json(
-      { error: '서버에 SUPABASE_SERVICE_ROLE_KEY가 필요합니다.' },
+      {
+        error:
+          '서버에 SUPABASE_SERVICE_ROLE_KEY(또는 SUPABASE_SERVICE_KEY)가 없습니다. 클라이언트는 익명 로그인 경로로 동작합니다.',
+      },
       { status: 503 },
     );
   }
@@ -85,7 +88,10 @@ export async function POST(req: NextRequest) {
   const supabase = getService();
   if (!supabase) {
     return NextResponse.json(
-      { error: '서버에 SUPABASE_SERVICE_ROLE_KEY가 필요합니다.' },
+      {
+        error:
+          '서버에 SUPABASE_SERVICE_ROLE_KEY(또는 SUPABASE_SERVICE_KEY)가 없습니다. 클라이언트는 익명 로그인 경로로 동작합니다.',
+      },
       { status: 503 },
     );
   }

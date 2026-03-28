@@ -9,6 +9,13 @@ import {
   apiPatchTodo,
   type TodoRow,
 } from '@/lib/todos-api';
+import {
+  directCreateTodo,
+  directDeleteTodo,
+  directFetchTodosByDate,
+  directFetchTodosRange,
+  directPatchTodo,
+} from '@/lib/todos-direct';
 import { Todo } from '@/types/todo';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
@@ -81,6 +88,8 @@ function computeStreakFromMap(
 
 type TodoFilter = 'all' | 'active' | 'completed';
 
+type TodosMode = 'unknown' | 'service' | 'anon';
+
 function normalizeTodoRow(row: TodoRow): Todo {
   const date =
     typeof row.date === 'string'
@@ -97,6 +106,8 @@ function normalizeTodoRow(row: TodoRow): Todo {
 }
 
 export default function TodosPage() {
+  const [todosMode, setTodosMode] = useState<TodosMode>('unknown');
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [selectedDate, setSelectedDate] = useState(getToday);
   const [newTitle, setNewTitle] = useState('');
@@ -110,11 +121,39 @@ export default function TodosPage() {
   const [backlogLoading, setBacklogLoading] = useState(false);
   const [backlogOpen, setBacklogOpen] = useState(true);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch('/api/bootstrap');
+        const b = (await r.json()) as { mode?: string };
+        if (cancelled) return;
+        if (b.mode === 'service' || b.mode === 'anon') {
+          setTodosMode(b.mode);
+        } else {
+          setTodosMode('anon');
+        }
+      } catch {
+        if (!cancelled) {
+          setBootstrapError('연결 방식을 확인하지 못했습니다. 익명 로그인으로 시도합니다.');
+          setTodosMode('anon');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const loadStreak = useCallback(async () => {
+    if (todosMode !== 'service' && todosMode !== 'anon') return;
     const end = getToday();
     const start = shiftDate(end, -120);
     try {
-      const rows = await apiFetchTodosRange(start, end);
+      const rows =
+        todosMode === 'service'
+          ? await apiFetchTodosRange(start, end)
+          : await directFetchTodosRange(start, end);
       const map = new Map<string, boolean[]>();
       for (const row of rows) {
         const d = String(row.date).slice(0, 10);
@@ -126,48 +165,64 @@ export default function TodosPage() {
     } catch {
       setCompletionStreak(0);
     }
-  }, []);
+  }, [todosMode]);
 
   const loadIncompleteBacklog = useCallback(async () => {
+    if (todosMode !== 'service' && todosMode !== 'anon') return;
     setBacklogLoading(true);
     const today = getToday();
     const end = shiftDate(today, 366);
     const start = shiftDate(today, -730);
     try {
-      const rows = await apiFetchTodosRange(start, end, { incompleteOnly: true });
+      const rows =
+        todosMode === 'service'
+          ? await apiFetchTodosRange(start, end, { incompleteOnly: true })
+          : await directFetchTodosRange(start, end, { incompleteOnly: true });
       setIncompleteBacklog(rows.map(normalizeTodoRow));
     } catch {
       setIncompleteBacklog([]);
     }
     setBacklogLoading(false);
-  }, []);
+  }, [todosMode]);
 
-  const loadTodos = useCallback(async (date: string) => {
-    setListLoading(true);
-    setListError(null);
-    try {
-      const rows = await apiFetchTodosByDate(date);
-      setTodos(rows.map(normalizeTodoRow));
-    } catch (e) {
-      setListError(
-        e instanceof Error ? e.message : '할일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
-      );
-      setTodos([]);
-    }
-    setListLoading(false);
-  }, []);
+  const loadTodos = useCallback(
+    async (date: string) => {
+      if (todosMode !== 'service' && todosMode !== 'anon') return;
+      setListLoading(true);
+      setListError(null);
+      try {
+        const rows =
+          todosMode === 'service'
+            ? await apiFetchTodosByDate(date)
+            : await directFetchTodosByDate(date);
+        setTodos(rows.map(normalizeTodoRow));
+      } catch (e) {
+        setListError(
+          e instanceof Error
+            ? e.message
+            : '할일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        );
+        setTodos([]);
+      }
+      setListLoading(false);
+    },
+    [todosMode],
+  );
 
   useEffect(() => {
+    if (todosMode === 'unknown') return;
     void loadTodos(selectedDate);
-  }, [selectedDate, loadTodos]);
+  }, [selectedDate, todosMode, loadTodos]);
 
   useEffect(() => {
+    if (todosMode === 'unknown') return;
     void loadStreak();
-  }, [loadStreak]);
+  }, [todosMode, loadStreak]);
 
   useEffect(() => {
+    if (todosMode === 'unknown') return;
     void loadIncompleteBacklog();
-  }, [loadIncompleteBacklog]);
+  }, [todosMode, loadIncompleteBacklog]);
 
   const filteredTodos = useMemo(() => {
     if (todoFilter === 'active') return todos.filter((t) => !t.is_completed);
@@ -193,7 +248,10 @@ export default function TodosPage() {
     setActionError(null);
     let row: TodoRow;
     try {
-      row = await apiCreateTodo(trimmed, selectedDate);
+      row =
+        todosMode === 'service'
+          ? await apiCreateTodo(trimmed, selectedDate)
+          : await directCreateTodo(trimmed, selectedDate);
     } catch {
       setActionError('할일을 추가하지 못했습니다.');
       return;
@@ -218,7 +276,10 @@ export default function TodosPage() {
     const next = !todo.is_completed;
     let updatedRow: TodoRow;
     try {
-      updatedRow = await apiPatchTodo(id, { is_completed: next });
+      updatedRow =
+        todosMode === 'service'
+          ? await apiPatchTodo(id, { is_completed: next })
+          : await directPatchTodo(id, { is_completed: next });
     } catch {
       setActionError('완료 상태를 변경하지 못했습니다.');
       return;
@@ -235,7 +296,10 @@ export default function TodosPage() {
 
     if (willCompleteThis && updated.date === today && updated.is_completed) {
       try {
-        const todayRows = await apiFetchTodosByDate(today);
+        const todayRows =
+          todosMode === 'service'
+            ? await apiFetchTodosByDate(today)
+            : await directFetchTodosByDate(today);
         const allTodayDone =
           todayRows.length > 0 && todayRows.every((r) => r.is_completed);
         if (allTodayDone) {
@@ -258,7 +322,11 @@ export default function TodosPage() {
 
     setActionError(null);
     try {
-      await apiDeleteTodo(id);
+      if (todosMode === 'service') {
+        await apiDeleteTodo(id);
+      } else {
+        await directDeleteTodo(id);
+      }
     } catch {
       setActionError('할일을 삭제하지 못했습니다.');
       return;
@@ -279,7 +347,10 @@ export default function TodosPage() {
     setActionError(null);
     let updatedRow: TodoRow;
     try {
-      updatedRow = await apiPatchTodo(id, { title });
+      updatedRow =
+        todosMode === 'service'
+          ? await apiPatchTodo(id, { title })
+          : await directPatchTodo(id, { title });
     } catch {
       setActionError('할일을 수정하지 못했습니다.');
       return;
@@ -304,6 +375,14 @@ export default function TodosPage() {
 
   function goToToday() {
     setSelectedDate(getToday());
+  }
+
+  if (todosMode === 'unknown') {
+    return (
+      <div className="flex flex-1 items-center justify-center py-24">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-100 border-t-sky-500 dark:border-sky-900 dark:border-t-sky-400" />
+      </div>
+    );
   }
 
   return (
@@ -379,9 +458,9 @@ export default function TodosPage() {
         )}
       </div>
 
-      {(listError || actionError) && (
+      {(bootstrapError || listError || actionError) && (
         <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
-          {listError ?? actionError}
+          {bootstrapError ?? listError ?? actionError}
         </div>
       )}
 
