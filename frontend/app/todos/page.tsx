@@ -9,6 +9,13 @@ import {
   apiPatchTodo,
   type TodoRow,
 } from '@/lib/todos-api';
+import {
+  directCreateTodo,
+  directDeleteTodo,
+  directFetchTodosByDate,
+  directFetchTodosRange,
+  directPatchTodo,
+} from '@/lib/todos-direct';
 import { Todo } from '@/types/todo';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
@@ -81,7 +88,7 @@ function computeStreakFromMap(
 
 type TodoFilter = 'all' | 'active' | 'completed';
 
-type TodosMode = 'unknown' | 'service' | 'unconfigured';
+type TodosMode = 'unknown' | 'service' | 'anon';
 
 function normalizeTodoRow(row: TodoRow): Todo {
   const date =
@@ -121,15 +128,15 @@ export default function TodosPage() {
         const r = await fetch('/api/bootstrap');
         const b = (await r.json()) as { mode?: string };
         if (cancelled) return;
-        if (b.mode === 'service') {
-          setTodosMode('service');
+        if (b.mode === 'service' || b.mode === 'anon') {
+          setTodosMode(b.mode);
         } else {
-          setTodosMode('unconfigured');
+          setTodosMode('anon');
         }
       } catch {
         if (!cancelled) {
-          setBootstrapError('서버 연결을 확인하지 못했습니다.');
-          setTodosMode('unconfigured');
+          setBootstrapError('연결 방식을 확인하지 못했습니다. 익명 로그인으로 시도합니다.');
+          setTodosMode('anon');
         }
       }
     })();
@@ -139,11 +146,14 @@ export default function TodosPage() {
   }, []);
 
   const loadStreak = useCallback(async () => {
-    if (todosMode !== 'service') return;
+    if (todosMode !== 'service' && todosMode !== 'anon') return;
     const end = getToday();
     const start = shiftDate(end, -120);
     try {
-      const rows = await apiFetchTodosRange(start, end);
+      const rows =
+        todosMode === 'service'
+          ? await apiFetchTodosRange(start, end)
+          : await directFetchTodosRange(start, end);
       const map = new Map<string, boolean[]>();
       for (const row of rows) {
         const d = String(row.date).slice(0, 10);
@@ -158,13 +168,16 @@ export default function TodosPage() {
   }, [todosMode]);
 
   const loadIncompleteBacklog = useCallback(async () => {
-    if (todosMode !== 'service') return;
+    if (todosMode !== 'service' && todosMode !== 'anon') return;
     setBacklogLoading(true);
     const today = getToday();
     const end = shiftDate(today, 366);
     const start = shiftDate(today, -730);
     try {
-      const rows = await apiFetchTodosRange(start, end, { incompleteOnly: true });
+      const rows =
+        todosMode === 'service'
+          ? await apiFetchTodosRange(start, end, { incompleteOnly: true })
+          : await directFetchTodosRange(start, end, { incompleteOnly: true });
       setIncompleteBacklog(rows.map(normalizeTodoRow));
     } catch {
       setIncompleteBacklog([]);
@@ -174,11 +187,14 @@ export default function TodosPage() {
 
   const loadTodos = useCallback(
     async (date: string) => {
-      if (todosMode !== 'service') return;
+      if (todosMode !== 'service' && todosMode !== 'anon') return;
       setListLoading(true);
       setListError(null);
       try {
-        const rows = await apiFetchTodosByDate(date);
+        const rows =
+          todosMode === 'service'
+            ? await apiFetchTodosByDate(date)
+            : await directFetchTodosByDate(date);
         setTodos(rows.map(normalizeTodoRow));
       } catch (e) {
         setListError(
@@ -229,11 +245,13 @@ export default function TodosPage() {
     const trimmed = newTitle.trim();
     if (!trimmed) return;
 
-    if (todosMode !== 'service') return;
     setActionError(null);
     let row: TodoRow;
     try {
-      row = await apiCreateTodo(trimmed, selectedDate);
+      row =
+        todosMode === 'service'
+          ? await apiCreateTodo(trimmed, selectedDate)
+          : await directCreateTodo(trimmed, selectedDate);
     } catch {
       setActionError('할일을 추가하지 못했습니다.');
       return;
@@ -254,12 +272,14 @@ export default function TodosPage() {
     const today = getToday();
     const willCompleteThis = !todo.is_completed;
 
-    if (todosMode !== 'service') return;
     setActionError(null);
     const next = !todo.is_completed;
     let updatedRow: TodoRow;
     try {
-      updatedRow = await apiPatchTodo(id, { is_completed: next });
+      updatedRow =
+        todosMode === 'service'
+          ? await apiPatchTodo(id, { is_completed: next })
+          : await directPatchTodo(id, { is_completed: next });
     } catch {
       setActionError('완료 상태를 변경하지 못했습니다.');
       return;
@@ -276,7 +296,10 @@ export default function TodosPage() {
 
     if (willCompleteThis && updated.date === today && updated.is_completed) {
       try {
-        const todayRows = await apiFetchTodosByDate(today);
+        const todayRows =
+          todosMode === 'service'
+            ? await apiFetchTodosByDate(today)
+            : await directFetchTodosByDate(today);
         const allTodayDone =
           todayRows.length > 0 && todayRows.every((r) => r.is_completed);
         if (allTodayDone) {
@@ -297,10 +320,13 @@ export default function TodosPage() {
       todos.find((t) => t.id === id) ??
       incompleteBacklog.find((t) => t.id === id);
 
-    if (todosMode !== 'service') return;
     setActionError(null);
     try {
-      await apiDeleteTodo(id);
+      if (todosMode === 'service') {
+        await apiDeleteTodo(id);
+      } else {
+        await directDeleteTodo(id);
+      }
     } catch {
       setActionError('할일을 삭제하지 못했습니다.');
       return;
@@ -318,11 +344,13 @@ export default function TodosPage() {
       todos.find((t) => t.id === id) ??
       incompleteBacklog.find((t) => t.id === id);
 
-    if (todosMode !== 'service') return;
     setActionError(null);
     let updatedRow: TodoRow;
     try {
-      updatedRow = await apiPatchTodo(id, { title });
+      updatedRow =
+        todosMode === 'service'
+          ? await apiPatchTodo(id, { title })
+          : await directPatchTodo(id, { title });
     } catch {
       setActionError('할일을 수정하지 못했습니다.');
       return;
@@ -353,27 +381,6 @@ export default function TodosPage() {
     return (
       <div className="flex flex-1 items-center justify-center py-24">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-100 border-t-sky-500 dark:border-sky-900 dark:border-t-sky-400" />
-      </div>
-    );
-  }
-
-  if (todosMode === 'unconfigured') {
-    return (
-      <div className="mx-auto max-w-lg px-5 py-16 sm:px-8">
-        <div className="rounded-3xl border border-amber-200 bg-amber-50/90 px-6 py-8 text-neutral-900 shadow-sm dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-50">
-          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">서버 설정이 필요합니다</h1>
-          <p className="mt-4 text-sm leading-relaxed text-neutral-700 dark:text-amber-100/90">
-            할 일은 브라우저가 Supabase에 직접 붙지 않고, Next 서버(Route Handler)가 서비스 롤 키로
-            처리합니다. <code className="rounded bg-white/70 px-1.5 py-0.5 text-xs dark:bg-black/30">frontend/.env.local</code>에{' '}
-            <code className="rounded bg-white/70 px-1.5 py-0.5 text-xs dark:bg-black/30">SUPABASE_SERVICE_ROLE_KEY</code>와{' '}
-            <code className="rounded bg-white/70 px-1.5 py-0.5 text-xs dark:bg-black/30">NEXT_PUBLIC_SUPABASE_URL</code> 등을
-            넣은 뒤 개발 서버를 다시 시작하세요. 키는 절대{' '}
-            <code className="rounded bg-white/70 px-1.5 py-0.5 text-xs dark:bg-black/30">NEXT_PUBLIC_</code>로 두지 마세요.
-          </p>
-          {bootstrapError && (
-            <p className="mt-4 text-sm text-red-800 dark:text-red-200">{bootstrapError}</p>
-          )}
-        </div>
       </div>
     );
   }
