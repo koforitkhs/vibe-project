@@ -25,6 +25,17 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function formatDateShort(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
+  });
+}
+
 function shiftDate(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = new Date(year, month - 1, day);
@@ -101,6 +112,9 @@ export default function TodosPage() {
   const [todoFilter, setTodoFilter] = useState<TodoFilter>('all');
   const [completionStreak, setCompletionStreak] = useState(0);
   const [streakFlash, setStreakFlash] = useState(false);
+  const [incompleteBacklog, setIncompleteBacklog] = useState<Todo[]>([]);
+  const [backlogLoading, setBacklogLoading] = useState(false);
+  const [backlogOpen, setBacklogOpen] = useState(true);
 
   const loadStreak = useCallback(async () => {
     const end = getToday();
@@ -124,6 +138,30 @@ export default function TodosPage() {
       map.set(d, arr);
     }
     setCompletionStreak(computeStreakFromMap(map, end));
+  }, [supabase]);
+
+  const loadIncompleteBacklog = useCallback(async () => {
+    setBacklogLoading(true);
+    const today = getToday();
+    const end = shiftDate(today, 366);
+    const start = shiftDate(today, -730);
+    const { data, error } = await supabase
+      .from('todos')
+      .select('*')
+      .eq('is_completed', false)
+      .gte('date', start)
+      .lte('date', end)
+      .order('date', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      setIncompleteBacklog([]);
+      setBacklogLoading(false);
+      return;
+    }
+
+    setIncompleteBacklog(((data ?? []) as TodoRow[]).map(normalizeTodoRow));
+    setBacklogLoading(false);
   }, [supabase]);
 
   const loadTodos = useCallback(
@@ -182,11 +220,22 @@ export default function TodosPage() {
     void loadStreak();
   }, [authReady, authError, loadStreak]);
 
+  useEffect(() => {
+    if (!authReady || authError) return;
+    void loadIncompleteBacklog();
+  }, [authReady, authError, loadIncompleteBacklog]);
+
   const filteredTodos = useMemo(() => {
     if (todoFilter === 'active') return todos.filter((t) => !t.is_completed);
     if (todoFilter === 'completed') return todos.filter((t) => t.is_completed);
     return todos;
   }, [todos, todoFilter]);
+
+  /** 보고 있는 날짜 목록과 겹치지 않게, 다른 날짜에 남은 미완료만 모아서 표시 */
+  const backlogForPanel = useMemo(
+    () => incompleteBacklog.filter((t) => t.date !== selectedDate),
+    [incompleteBacklog, selectedDate],
+  );
 
   const completionRate = getCompletionRate(todos);
   const completedCount = todos.filter((t) => t.is_completed).length;
@@ -212,14 +261,16 @@ export default function TodosPage() {
     setTodos((prev) => [...prev, normalizeTodoRow(data as TodoRow)]);
     setNewTitle('');
     void loadStreak();
+    void loadIncompleteBacklog();
   }
 
   async function handleToggle(id: string) {
-    const todo = todos.find((t) => t.id === id);
+    const todo =
+      todos.find((t) => t.id === id) ??
+      incompleteBacklog.find((t) => t.id === id);
     if (!todo) return;
 
     const today = getToday();
-    const hadIncomplete = todos.some((t) => !t.is_completed);
     const willCompleteThis = !todo.is_completed;
 
     setActionError(null);
@@ -236,27 +287,39 @@ export default function TodosPage() {
       return;
     }
 
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? normalizeTodoRow(data as TodoRow) : t)),
-    );
+    const updated = normalizeTodoRow(data as TodoRow);
 
-    const nextTodos = todos.map((t) =>
-      t.id === id ? normalizeTodoRow(data as TodoRow) : t,
-    );
-    const allDone = nextTodos.length > 0 && nextTodos.every((t) => t.is_completed);
-    if (
-      selectedDate === today &&
-      willCompleteThis &&
-      hadIncomplete &&
-      allDone
-    ) {
-      setStreakFlash(true);
-      window.setTimeout(() => setStreakFlash(false), 2800);
+    if (updated.date === selectedDate) {
+      setTodos((prev) => {
+        if (!prev.some((t) => t.id === id)) return prev;
+        return prev.map((t) => (t.id === id ? updated : t));
+      });
     }
+
+    if (willCompleteThis && updated.date === today && updated.is_completed) {
+      const { data: todayRows } = await supabase
+        .from('todos')
+        .select('is_completed')
+        .eq('date', today);
+      const allTodayDone =
+        todayRows &&
+        todayRows.length > 0 &&
+        todayRows.every((r) => r.is_completed);
+      if (allTodayDone) {
+        setStreakFlash(true);
+        window.setTimeout(() => setStreakFlash(false), 2800);
+      }
+    }
+
     void loadStreak();
+    void loadIncompleteBacklog();
   }
 
   async function handleDelete(id: string) {
+    const todo =
+      todos.find((t) => t.id === id) ??
+      incompleteBacklog.find((t) => t.id === id);
+
     setActionError(null);
     const { error } = await supabase.from('todos').delete().eq('id', id);
 
@@ -265,11 +328,18 @@ export default function TodosPage() {
       return;
     }
 
-    setTodos((prev) => prev.filter((t) => t.id !== id));
+    if (todo?.date === selectedDate) {
+      setTodos((prev) => prev.filter((t) => t.id !== id));
+    }
     void loadStreak();
+    void loadIncompleteBacklog();
   }
 
   async function handleUpdate(id: string, title: string) {
+    const todo =
+      todos.find((t) => t.id === id) ??
+      incompleteBacklog.find((t) => t.id === id);
+
     setActionError(null);
     const { data, error } = await supabase
       .from('todos')
@@ -283,9 +353,13 @@ export default function TodosPage() {
       return;
     }
 
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? normalizeTodoRow(data as TodoRow) : t)),
-    );
+    const updated = normalizeTodoRow(data as TodoRow);
+    if (todo?.date === selectedDate) {
+      setTodos((prev) =>
+        prev.map((t) => (t.id === id ? updated : t)),
+      );
+    }
+    void loadIncompleteBacklog();
   }
 
   function goToPrev() {
@@ -414,6 +488,69 @@ export default function TodosPage() {
           />
         </div>
       </div>
+
+      <section
+        className="mb-8 overflow-hidden rounded-3xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-white shadow-sm"
+        aria-label="다른 날짜 미완료 할일"
+      >
+        <button
+          type="button"
+          onClick={() => setBacklogOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition-colors hover:bg-amber-50/50 sm:px-6"
+          aria-expanded={backlogOpen}
+        >
+          <div>
+            <h2 className="text-base font-bold text-neutral-900 sm:text-lg">
+              완료하지 못한 할일
+            </h2>
+            <p className="mt-0.5 text-xs text-neutral-500 sm:text-sm">
+              다른 날짜에 남겨 둔 일만 모아서 보여요. 이 날짜의 미완료는 위 목록에서 볼 수 있어요.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-sm font-bold tabular-nums text-white shadow-sm">
+            {backlogForPanel.length}
+          </span>
+        </button>
+
+        {backlogOpen && (
+          <div className="border-t border-amber-200/60 px-5 pb-5 pt-3 sm:px-6">
+            {incompleteBacklog.length > backlogForPanel.length && (
+              <p className="mb-3 text-xs text-neutral-500">
+                이 날짜 미완료{' '}
+                {incompleteBacklog.length - backlogForPanel.length}건은 위 할일 목록에서 확인하세요.
+              </p>
+            )}
+            {backlogLoading ? (
+              <p className="py-8 text-center text-sm font-medium text-neutral-500">
+                불러오는 중…
+              </p>
+            ) : backlogForPanel.length === 0 ? (
+              <p className="py-8 text-center text-sm font-medium text-neutral-600">
+                다른 날짜에 밀린 미완료 할일이 없습니다.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {backlogForPanel.map((todo) => (
+                  <TodoItem
+                    key={todo.id}
+                    todo={todo}
+                    dateLabel={formatDateShort(todo.date)}
+                    onToggle={(tid) => {
+                      void handleToggle(tid);
+                    }}
+                    onDelete={(tid) => {
+                      void handleDelete(tid);
+                    }}
+                    onUpdate={(tid, title) => {
+                      void handleUpdate(tid, title);
+                    }}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
 
       <div className="mb-4 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
         <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">

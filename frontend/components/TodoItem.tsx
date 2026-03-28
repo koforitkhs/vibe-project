@@ -8,9 +8,17 @@ interface TodoItemProps {
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, title: string) => void;
+  /** 예: 모아보기에서 해당 할일이 속한 날짜 표시 */
+  dateLabel?: string;
 }
 
-export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoItemProps) {
+export default function TodoItem({
+  todo,
+  onToggle,
+  onDelete,
+  onUpdate,
+  dateLabel,
+}: TodoItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(todo.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,26 +66,40 @@ export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoIte
       />
 
       {isEditing ? (
-        <input
-          ref={inputRef}
-          type="text"
-          value={editText}
-          onChange={(e) => setEditText(e.target.value)}
-          onBlur={commitEdit}
-          onKeyDown={handleKeyDown}
-          className="flex-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/25"
-        />
+        <div className="min-w-0 flex-1">
+          {dateLabel ? (
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700/90 sm:text-xs">
+              {dateLabel}
+            </p>
+          ) : null}
+          <input
+            ref={inputRef}
+            type="text"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={handleKeyDown}
+            className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/25"
+          />
+        </div>
       ) : (
-        <span
-          onDoubleClick={startEditing}
-          className={`flex-1 cursor-pointer text-sm leading-relaxed select-none sm:text-[15px] ${
-            todo.is_completed
-              ? 'text-neutral-400 line-through'
-              : 'text-neutral-900'
-          }`}
-        >
-          {todo.title}
-        </span>
+        <div className="min-w-0 flex-1">
+          {dateLabel ? (
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700/90 sm:text-xs">
+              {dateLabel}
+            </p>
+          ) : null}
+          <span
+            onDoubleClick={startEditing}
+            className={`block cursor-pointer text-sm leading-relaxed select-none sm:text-[15px] ${
+              todo.is_completed
+                ? 'text-neutral-400 line-through'
+                : 'text-neutral-900'
+            }`}
+          >
+            {todo.title}
+          </span>
+        </div>
       )}
 
       {!isEditing && (
