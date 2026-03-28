@@ -1,0 +1,19 @@
+# Dependencies & build
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Env (secrets — never commit)
+frontend/.env.local
+frontend/.env*.local
+
+# Logs / OS
+*.log
+.DS_Store
+
+# TypeScript
+frontend/*.tsbuildinfo
+
+# Cursor (local IDE)
+.cursor/
