@@ -2,13 +2,16 @@
 
 import TodoItem from '@/components/TodoItem';
 import { createClient } from '@/lib/supabase/client';
-import { useAuth } from '@/lib/authContext';
 import { Todo } from '@/types/todo';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
+/** 로컬 달력 기준 오늘 (UTC ISO와 하루 어긋남 방지) */
 function getToday(): string {
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatDate(dateStr: string): string {
@@ -26,13 +29,36 @@ function shiftDate(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = new Date(year, month - 1, day);
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 function getCompletionRate(todos: Todo[]): number {
   if (todos.length === 0) return 0;
   const completed = todos.filter((t) => t.is_completed).length;
   return Math.round((completed / todos.length) * 100);
+}
+
+/** 할 일이 있는 날만 세고, 그날 전부 완료일 때만 +1. 할 일 없는 날은 건너뜀(연속 유지). */
+function computeStreakFromMap(
+  byDate: Map<string, boolean[]>,
+  endDate: string,
+): number {
+  let streak = 0;
+  let d = endDate;
+  for (let i = 0; i < 400; i++) {
+    const list = byDate.get(d);
+    if (!list?.length) {
+      d = shiftDate(d, -1);
+      continue;
+    }
+    if (!list.every(Boolean)) break;
+    streak++;
+    d = shiftDate(d, -1);
+  }
+  return streak;
 }
 
 type TodoRow = {
@@ -43,6 +69,8 @@ type TodoRow = {
   date: string;
   created_at: string;
 };
+
+type TodoFilter = 'all' | 'active' | 'completed';
 
 function normalizeTodoRow(row: TodoRow): Todo {
   const date =
@@ -60,8 +88,6 @@ function normalizeTodoRow(row: TodoRow): Todo {
 }
 
 export default function TodosPage() {
-  const { isLoggedIn, initializing } = useAuth();
-  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -70,6 +96,35 @@ export default function TodosPage() {
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [todoFilter, setTodoFilter] = useState<TodoFilter>('all');
+  const [completionStreak, setCompletionStreak] = useState(0);
+  const [streakFlash, setStreakFlash] = useState(false);
+
+  const loadStreak = useCallback(async () => {
+    const end = getToday();
+    const start = shiftDate(end, -120);
+    const { data, error } = await supabase
+      .from('todos')
+      .select('date, is_completed')
+      .gte('date', start)
+      .lte('date', end);
+
+    if (error || !data) {
+      setCompletionStreak(0);
+      return;
+    }
+
+    const map = new Map<string, boolean[]>();
+    for (const row of data as { date: string; is_completed: boolean }[]) {
+      const d = String(row.date).slice(0, 10);
+      const arr = map.get(d) ?? [];
+      arr.push(row.is_completed);
+      map.set(d, arr);
+    }
+    setCompletionStreak(computeStreakFromMap(map, end));
+  }, [supabase]);
 
   const loadTodos = useCallback(
     async (date: string) => {
@@ -96,19 +151,42 @@ export default function TodosPage() {
   );
 
   useEffect(() => {
-    if (!initializing && !isLoggedIn) {
-      router.replace('/login');
-    }
-  }, [initializing, isLoggedIn, router]);
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (!session) {
+        const { error } = await supabase.auth.signInAnonymously();
+        if (error) {
+          setAuthError(
+            '세션을 시작할 수 없습니다. Supabase 대시보드에서 익명 로그인(Anonymous sign-in)을 켜 주세요.',
+          );
+        }
+      }
+      if (!cancelled) setAuthReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!authReady || authError) return;
     void loadTodos(selectedDate);
-  }, [isLoggedIn, selectedDate, loadTodos]);
+  }, [authReady, authError, selectedDate, loadTodos]);
 
-  if (initializing || !isLoggedIn) {
-    return null;
-  }
+  useEffect(() => {
+    if (!authReady || authError) return;
+    void loadStreak();
+  }, [authReady, authError, loadStreak]);
+
+  const filteredTodos = useMemo(() => {
+    if (todoFilter === 'active') return todos.filter((t) => !t.is_completed);
+    if (todoFilter === 'completed') return todos.filter((t) => t.is_completed);
+    return todos;
+  }, [todos, todoFilter]);
 
   const completionRate = getCompletionRate(todos);
   const completedCount = todos.filter((t) => t.is_completed).length;
@@ -133,11 +211,16 @@ export default function TodosPage() {
 
     setTodos((prev) => [...prev, normalizeTodoRow(data as TodoRow)]);
     setNewTitle('');
+    void loadStreak();
   }
 
   async function handleToggle(id: string) {
     const todo = todos.find((t) => t.id === id);
     if (!todo) return;
+
+    const today = getToday();
+    const hadIncomplete = todos.some((t) => !t.is_completed);
+    const willCompleteThis = !todo.is_completed;
 
     setActionError(null);
     const next = !todo.is_completed;
@@ -156,6 +239,21 @@ export default function TodosPage() {
     setTodos((prev) =>
       prev.map((t) => (t.id === id ? normalizeTodoRow(data as TodoRow) : t)),
     );
+
+    const nextTodos = todos.map((t) =>
+      t.id === id ? normalizeTodoRow(data as TodoRow) : t,
+    );
+    const allDone = nextTodos.length > 0 && nextTodos.every((t) => t.is_completed);
+    if (
+      selectedDate === today &&
+      willCompleteThis &&
+      hadIncomplete &&
+      allDone
+    ) {
+      setStreakFlash(true);
+      window.setTimeout(() => setStreakFlash(false), 2800);
+    }
+    void loadStreak();
   }
 
   async function handleDelete(id: string) {
@@ -168,6 +266,7 @@ export default function TodosPage() {
     }
 
     setTodos((prev) => prev.filter((t) => t.id !== id));
+    void loadStreak();
   }
 
   async function handleUpdate(id: string, title: string) {
@@ -201,81 +300,153 @@ export default function TodosPage() {
     setSelectedDate(getToday());
   }
 
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={goToPrev}
-          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
-          aria-label="이전 날짜"
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-          </svg>
-        </button>
+  if (!authReady) {
+    return (
+      <div className="flex flex-1 items-center justify-center py-24">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-100 border-t-sky-500" />
+      </div>
+    );
+  }
 
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">
-            {isToday ? '오늘의 할일' : '할일 기록'}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {formatDate(selectedDate)}
-          </p>
-          {!isToday && (
-            <button
-              type="button"
-              onClick={goToToday}
-              className="mt-1 text-xs font-medium text-gray-900 underline underline-offset-2 hover:text-gray-600"
-            >
-              오늘로 돌아가기
-            </button>
-          )}
+  if (authError) {
+    return (
+      <div className="mx-auto max-w-3xl px-5 py-16 sm:px-8">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+          {authError}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
+      <div
+        className={`relative mb-8 overflow-hidden rounded-3xl border border-neutral-200 bg-white px-4 py-5 shadow-sm sm:px-6 ${
+          streakFlash ? 'flame-glow ring-2 ring-orange-400/60' : ''
+        }`}
+      >
+        {streakFlash && (
+          <div
+            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-orange-500/15 via-transparent to-red-500/10"
+            aria-hidden
+          />
+        )}
+        <div className="relative flex items-center justify-between">
+          <button
+            type="button"
+            onClick={goToPrev}
+            className="rounded-xl p-2.5 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
+            aria-label="하루 전"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+
+          <div className="text-center">
+            <h1 className="text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
+              {isToday ? '오늘의 할일' : '할일 기록'}
+            </h1>
+            <p className="mt-2 text-sm font-medium text-neutral-500 sm:text-base">
+              {formatDate(selectedDate)}
+            </p>
+            {!isToday && (
+              <button
+                type="button"
+                onClick={goToToday}
+                className="mt-2 text-xs font-semibold text-sky-600 underline-offset-4 hover:text-sky-700 hover:underline sm:text-sm"
+              >
+                오늘로 돌아가기
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={goToNext}
+            className="rounded-xl p-2.5 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
+            aria-label="하루 후"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={goToNext}
-          disabled={isToday}
-          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-          aria-label="다음 날짜"
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-          </svg>
-        </button>
+        {completionStreak > 0 && (
+          <div className="relative mt-5 flex justify-center">
+            <div
+              className={`flame-pulse inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-500/35 ${
+                streakFlash ? 'scale-105 ring-2 ring-amber-200' : ''
+              } transition-transform duration-300`}
+            >
+              <span className="text-lg leading-none" aria-hidden>
+                🔥
+              </span>
+              <span>
+                연속 {completionStreak}일 전부 완료
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {(listError || actionError) && (
-        <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-6 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
           {listError ?? actionError}
         </div>
       )}
 
-      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-gray-700">달성률</span>
-          <span className="font-bold text-gray-900">
+      <div className="mb-8 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="flex items-center justify-between text-sm sm:text-base">
+          <span className="font-semibold text-neutral-800">달성률</span>
+          <span className="text-lg font-bold tracking-tight text-neutral-950">
             {completionRate}%
-            <span className="ml-1 font-normal text-gray-400">
+            <span className="ml-1.5 text-sm font-medium text-neutral-400">
               ({completedCount}/{todos.length})
             </span>
           </span>
         </div>
-        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-100">
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-neutral-100">
           <div
-            className="h-full rounded-full bg-gray-900 transition-all duration-300 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-500 transition-all duration-500 ease-out"
             style={{ width: `${completionRate}%` }}
           />
         </div>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+          보기
+        </span>
+        {(
+          [
+            { key: 'all' as const, label: '전체' },
+            { key: 'active' as const, label: '미완료' },
+            { key: 'completed' as const, label: '완료' },
+          ] as const
+        ).map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTodoFilter(key)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+              todoFilter === key
+                ? 'bg-neutral-950 text-white shadow-sm'
+                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {listLoading ? (
-        <p className="py-12 text-center text-sm text-gray-500">불러오는 중…</p>
+        <p className="py-16 text-center text-sm font-medium text-neutral-500">불러오는 중…</p>
       ) : todos.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 py-16">
+        <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-sky-100 bg-sky-50/30 py-20">
           <svg
-            className="h-12 w-12 text-gray-300"
+            className="h-14 w-14 text-sky-300"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -287,16 +458,24 @@ export default function TodosPage() {
               d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15a2.25 2.25 0 0 1 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z"
             />
           </svg>
-          <p className="mt-4 text-base font-medium text-gray-900">
+          <p className="mt-5 text-lg font-semibold tracking-tight text-neutral-900">
             할일이 없습니다
           </p>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-neutral-500">
             새로운 할일을 추가해 보세요!
           </p>
         </div>
+      ) : filteredTodos.length === 0 ? (
+        <div className="rounded-3xl border border-neutral-200 bg-neutral-50/80 py-16 text-center">
+          <p className="text-sm font-medium text-neutral-600">
+            {todoFilter === 'completed'
+              ? '완료된 할일이 없습니다.'
+              : '미완료 할일이 없습니다.'}
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-2">
-          {todos.map((todo) => (
+        <ul className="space-y-3">
+          {filteredTodos.map((todo) => (
             <TodoItem
               key={todo.id}
               todo={todo}
@@ -314,18 +493,21 @@ export default function TodosPage() {
         </ul>
       )}
 
-      <form onSubmit={handleAdd} className="mt-4 flex gap-2">
+      <form
+        onSubmit={handleAdd}
+        className="mt-8 flex gap-3 rounded-3xl border border-neutral-200 bg-white p-3 pl-5 shadow-sm sm:p-4 sm:pl-6"
+      >
         <input
           type="text"
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="새로운 할일을 입력하세요"
-          className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none transition-colors"
+          className="min-w-0 flex-1 border-0 bg-transparent py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-0 sm:text-base"
         />
         <button
           type="submit"
           disabled={!newTitle.trim()}
-          className="shrink-0 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="shrink-0 rounded-2xl bg-neutral-950 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition-colors hover:bg-neutral-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-35"
         >
           추가
         </button>

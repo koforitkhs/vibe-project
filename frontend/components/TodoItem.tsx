@@ -49,12 +49,12 @@ export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoIte
   }
 
   return (
-    <li className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 transition-colors hover:border-gray-300">
+    <li className="group flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3.5 shadow-sm transition-all hover:border-neutral-300 hover:shadow-md sm:px-5">
       <input
         type="checkbox"
         checked={todo.is_completed}
         onChange={() => onToggle(todo.id)}
-        className="h-5 w-5 shrink-0 cursor-pointer rounded border-gray-300 text-gray-900 accent-gray-900"
+        className="h-5 w-5 shrink-0 cursor-pointer rounded border-neutral-300 text-sky-500 accent-sky-500"
       />
 
       {isEditing ? (
@@ -65,15 +65,15 @@ export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoIte
           onChange={(e) => setEditText(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={handleKeyDown}
-          className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none"
+          className="flex-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/25"
         />
       ) : (
         <span
           onDoubleClick={startEditing}
-          className={`flex-1 cursor-pointer text-sm leading-relaxed select-none ${
+          className={`flex-1 cursor-pointer text-sm leading-relaxed select-none sm:text-[15px] ${
             todo.is_completed
-              ? 'text-gray-400 line-through'
-              : 'text-gray-900'
+              ? 'text-neutral-400 line-through'
+              : 'text-neutral-900'
           }`}
         >
           {todo.title}
@@ -81,10 +81,10 @@ export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoIte
       )}
 
       {!isEditing && (
-        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             onClick={startEditing}
-            className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
             aria-label="수정"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -93,7 +93,7 @@ export default function TodoItem({ todo, onToggle, onDelete, onUpdate }: TodoIte
           </button>
           <button
             onClick={() => onDelete(todo.id)}
-            className="rounded p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-500"
             aria-label="삭제"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

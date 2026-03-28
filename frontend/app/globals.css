@@ -3,3 +3,46 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
 }
+
+::selection {
+  background-color: rgb(224 242 254);
+  color: rgb(15 23 42);
+}
+
+@keyframes flame-flicker {
+  0%,
+  100% {
+    filter: brightness(1);
+    transform: scale(1) translateY(0);
+  }
+  33% {
+    filter: brightness(1.12);
+    transform: scale(1.03) translateY(-1px);
+  }
+  66% {
+    filter: brightness(0.95);
+    transform: scale(0.98) translateY(1px);
+  }
+}
+
+@keyframes flame-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 20px rgb(251 146 60 / 0.45),
+      0 0 40px rgb(239 68 68 / 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 28px rgb(251 146 60 / 0.6),
+      0 0 56px rgb(239 68 68 / 0.35);
+  }
+}
+
+.flame-pulse {
+  animation: flame-flicker 1.1s ease-in-out infinite;
+}
+
+.flame-glow {
+  animation: flame-glow 2s ease-in-out infinite;
+}
