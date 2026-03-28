@@ -1,7 +1,14 @@
 'use client';
 
 import TodoItem from '@/components/TodoItem';
-import { createClient } from '@/lib/supabase/client';
+import {
+  apiCreateTodo,
+  apiDeleteTodo,
+  apiFetchTodosByDate,
+  apiFetchTodosRange,
+  apiPatchTodo,
+  type TodoRow,
+} from '@/lib/todos-api';
 import { Todo } from '@/types/todo';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
@@ -72,15 +79,6 @@ function computeStreakFromMap(
   return streak;
 }
 
-type TodoRow = {
-  id: string;
-  user_id: string;
-  title: string;
-  is_completed: boolean;
-  date: string;
-  created_at: string;
-};
-
 type TodoFilter = 'all' | 'active' | 'completed';
 
 function normalizeTodoRow(row: TodoRow): Todo {
@@ -99,16 +97,12 @@ function normalizeTodoRow(row: TodoRow): Todo {
 }
 
 export default function TodosPage() {
-  const supabase = useMemo(() => createClient(), []);
-
   const [todos, setTodos] = useState<Todo[]>([]);
   const [selectedDate, setSelectedDate] = useState(getToday);
   const [newTitle, setNewTitle] = useState('');
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
   const [todoFilter, setTodoFilter] = useState<TodoFilter>('all');
   const [completionStreak, setCompletionStreak] = useState(0);
   const [streakFlash, setStreakFlash] = useState(false);
@@ -119,111 +113,61 @@ export default function TodosPage() {
   const loadStreak = useCallback(async () => {
     const end = getToday();
     const start = shiftDate(end, -120);
-    const { data, error } = await supabase
-      .from('todos')
-      .select('date, is_completed')
-      .gte('date', start)
-      .lte('date', end);
-
-    if (error || !data) {
+    try {
+      const rows = await apiFetchTodosRange(start, end);
+      const map = new Map<string, boolean[]>();
+      for (const row of rows) {
+        const d = String(row.date).slice(0, 10);
+        const arr = map.get(d) ?? [];
+        arr.push(row.is_completed);
+        map.set(d, arr);
+      }
+      setCompletionStreak(computeStreakFromMap(map, end));
+    } catch {
       setCompletionStreak(0);
-      return;
     }
-
-    const map = new Map<string, boolean[]>();
-    for (const row of data as { date: string; is_completed: boolean }[]) {
-      const d = String(row.date).slice(0, 10);
-      const arr = map.get(d) ?? [];
-      arr.push(row.is_completed);
-      map.set(d, arr);
-    }
-    setCompletionStreak(computeStreakFromMap(map, end));
-  }, [supabase]);
+  }, []);
 
   const loadIncompleteBacklog = useCallback(async () => {
     setBacklogLoading(true);
     const today = getToday();
     const end = shiftDate(today, 366);
     const start = shiftDate(today, -730);
-    const { data, error } = await supabase
-      .from('todos')
-      .select('*')
-      .eq('is_completed', false)
-      .gte('date', start)
-      .lte('date', end)
-      .order('date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (error) {
+    try {
+      const rows = await apiFetchTodosRange(start, end, { incompleteOnly: true });
+      setIncompleteBacklog(rows.map(normalizeTodoRow));
+    } catch {
       setIncompleteBacklog([]);
-      setBacklogLoading(false);
-      return;
     }
-
-    setIncompleteBacklog(((data ?? []) as TodoRow[]).map(normalizeTodoRow));
     setBacklogLoading(false);
-  }, [supabase]);
+  }, []);
 
-  const loadTodos = useCallback(
-    async (date: string) => {
-      setListLoading(true);
-      setListError(null);
-      const { data, error } = await supabase
-        .from('todos')
-        .select('*')
-        .eq('date', date)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        setListError('할일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
-        setTodos([]);
-        setListLoading(false);
-        return;
-      }
-
-      const rows = (data ?? []) as TodoRow[];
+  const loadTodos = useCallback(async (date: string) => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const rows = await apiFetchTodosByDate(date);
       setTodos(rows.map(normalizeTodoRow));
-      setListLoading(false);
-    },
-    [supabase],
-  );
+    } catch (e) {
+      setListError(
+        e instanceof Error ? e.message : '할일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      );
+      setTodos([]);
+    }
+    setListLoading(false);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (cancelled) return;
-      if (!session) {
-        const { error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          setAuthError(
-            '세션을 시작할 수 없습니다. Supabase 대시보드에서 익명 로그인(Anonymous sign-in)을 켜 주세요.',
-          );
-        }
-      }
-      if (!cancelled) setAuthReady(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
-
-  useEffect(() => {
-    if (!authReady || authError) return;
     void loadTodos(selectedDate);
-  }, [authReady, authError, selectedDate, loadTodos]);
+  }, [selectedDate, loadTodos]);
 
   useEffect(() => {
-    if (!authReady || authError) return;
     void loadStreak();
-  }, [authReady, authError, loadStreak]);
+  }, [loadStreak]);
 
   useEffect(() => {
-    if (!authReady || authError) return;
     void loadIncompleteBacklog();
-  }, [authReady, authError, loadIncompleteBacklog]);
+  }, [loadIncompleteBacklog]);
 
   const filteredTodos = useMemo(() => {
     if (todoFilter === 'active') return todos.filter((t) => !t.is_completed);
@@ -247,18 +191,15 @@ export default function TodosPage() {
     if (!trimmed) return;
 
     setActionError(null);
-    const { data, error } = await supabase
-      .from('todos')
-      .insert({ title: trimmed, date: selectedDate })
-      .select()
-      .single();
-
-    if (error) {
+    let row: TodoRow;
+    try {
+      row = await apiCreateTodo(trimmed, selectedDate);
+    } catch {
       setActionError('할일을 추가하지 못했습니다.');
       return;
     }
 
-    setTodos((prev) => [...prev, normalizeTodoRow(data as TodoRow)]);
+    setTodos((prev) => [...prev, normalizeTodoRow(row)]);
     setNewTitle('');
     void loadStreak();
     void loadIncompleteBacklog();
@@ -275,19 +216,15 @@ export default function TodosPage() {
 
     setActionError(null);
     const next = !todo.is_completed;
-    const { data, error } = await supabase
-      .from('todos')
-      .update({ is_completed: next })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
+    let updatedRow: TodoRow;
+    try {
+      updatedRow = await apiPatchTodo(id, { is_completed: next });
+    } catch {
       setActionError('완료 상태를 변경하지 못했습니다.');
       return;
     }
 
-    const updated = normalizeTodoRow(data as TodoRow);
+    const updated = normalizeTodoRow(updatedRow);
 
     if (updated.date === selectedDate) {
       setTodos((prev) => {
@@ -297,17 +234,16 @@ export default function TodosPage() {
     }
 
     if (willCompleteThis && updated.date === today && updated.is_completed) {
-      const { data: todayRows } = await supabase
-        .from('todos')
-        .select('is_completed')
-        .eq('date', today);
-      const allTodayDone =
-        todayRows &&
-        todayRows.length > 0 &&
-        todayRows.every((r) => r.is_completed);
-      if (allTodayDone) {
-        setStreakFlash(true);
-        window.setTimeout(() => setStreakFlash(false), 2800);
+      try {
+        const todayRows = await apiFetchTodosByDate(today);
+        const allTodayDone =
+          todayRows.length > 0 && todayRows.every((r) => r.is_completed);
+        if (allTodayDone) {
+          setStreakFlash(true);
+          window.setTimeout(() => setStreakFlash(false), 2800);
+        }
+      } catch {
+        /* noop */
       }
     }
 
@@ -321,9 +257,9 @@ export default function TodosPage() {
       incompleteBacklog.find((t) => t.id === id);
 
     setActionError(null);
-    const { error } = await supabase.from('todos').delete().eq('id', id);
-
-    if (error) {
+    try {
+      await apiDeleteTodo(id);
+    } catch {
       setActionError('할일을 삭제하지 못했습니다.');
       return;
     }
@@ -341,19 +277,15 @@ export default function TodosPage() {
       incompleteBacklog.find((t) => t.id === id);
 
     setActionError(null);
-    const { data, error } = await supabase
-      .from('todos')
-      .update({ title })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
+    let updatedRow: TodoRow;
+    try {
+      updatedRow = await apiPatchTodo(id, { title });
+    } catch {
       setActionError('할일을 수정하지 못했습니다.');
       return;
     }
 
-    const updated = normalizeTodoRow(data as TodoRow);
+    const updated = normalizeTodoRow(updatedRow);
     if (todo?.date === selectedDate) {
       setTodos((prev) =>
         prev.map((t) => (t.id === id ? updated : t)),
@@ -372,24 +304,6 @@ export default function TodosPage() {
 
   function goToToday() {
     setSelectedDate(getToday());
-  }
-
-  if (!authReady) {
-    return (
-      <div className="flex flex-1 items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-100 border-t-sky-500 dark:border-sky-900 dark:border-t-sky-400" />
-      </div>
-    );
-  }
-
-  if (authError) {
-    return (
-      <div className="mx-auto max-w-3xl px-5 py-16 sm:px-8">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
-          {authError}
-        </div>
-      </div>
-    );
   }
 
   return (

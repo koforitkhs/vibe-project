@@ -1,35 +1,19 @@
-import { createServerClient } from '@supabase/ssr';
+import { isValidOwnerId, OWNER_COOKIE_NAME } from '@/lib/owner-cookie';
 import { NextResponse, type NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    return supabaseResponse;
+export function middleware(request: NextRequest) {
+  const res = NextResponse.next({ request });
+  const existing = request.cookies.get(OWNER_COOKIE_NAME)?.value;
+  if (!existing || !isValidOwnerId(existing)) {
+    res.cookies.set(OWNER_COOKIE_NAME, crypto.randomUUID(), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 400,
+      path: '/',
+    });
   }
-
-  const supabase = createServerClient(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value),
-        );
-        supabaseResponse = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
-
-  await supabase.auth.getUser();
-
-  return supabaseResponse;
+  return res;
 }
 
 export const config = {
